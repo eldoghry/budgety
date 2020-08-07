@@ -8,6 +8,7 @@ var budgetController = (function () {
         this.id = id;
         this.description = description;
         this.value = value;
+        this.percentage = -1;
     }
 
     var Income = function (id, description, value) {
@@ -29,10 +30,8 @@ var budgetController = (function () {
         percentage: -1
     }
 
-    var addItem = function (type, item) {
+    var addItemToData = function (type, item) {
         data.allItems[type].push(item);
-        calcTotal(type, item.value);
-
         return item;
     }
 
@@ -50,25 +49,40 @@ var budgetController = (function () {
     }
 
     return {
-        createItem: function (obj) {
-            // validate input first
-            if (obj.description !== '' && obj.value > 0 && obj.value !== '') {
-                var item, id, len;
+        addItem: function (obj) {
+            var item, id, len;
 
-                len = data.allItems[obj.type].length;
-                if (len > 0) {
-                    id = data.allItems[obj.type][len - 1].id + 1;
-                } else {
-                    id = 0;
+            len = data.allItems[obj.type].length;
+            len > 0 ? id = data.allItems[obj.type][len - 1].id + 1 : id = 0;
+
+            if (obj.type === 'exp')
+                item = new Expense(id, obj.description, obj.value);
+            else if (obj.type === 'inc')
+                item = new Income(id, obj.description, obj.value);
+
+            calcTotal(obj.type,obj.value);
+            this.testing();
+            return addItemToData(obj.type, item);
+        },
+
+        delItem: function(type,id){
+            var value, itemIndex = -1;
+            // get index of item which should delete
+            data.allItems[type].map(function(cur,index){
+                if (cur.id === id){
+                    itemIndex = index;
+                    value = cur.value;
                 }
+            })
 
-                if (obj.type === 'exp') {
-                    item = new Expense(id, obj.description, obj.value);
-                } else if (obj.type === 'inc') {
-                    item = new Income(id, obj.description, obj.value);
-                }
-
-                return addItem(obj.type, item);
+            // validate id is in array
+            if(itemIndex !== -1){
+                // decrease total 
+                value = -1 * value;
+                calcTotal(type,value);
+                // remove item from datastructure
+                data.allItems[type].splice(itemIndex,1);
+                this.testing();
             }
         },
 
@@ -99,6 +113,10 @@ var UIController = (function () {
         inputDescription: '.add__description',
         inputValue: '.add__value',
         inputBtn: '.add__btn',
+        container: '.container',
+        incList: '.inc__list',
+        expList: '.exp__list',
+        itemBtn: '.item__delete--btn',
         budgetLabel: '.budget__value',
         incLabel: '.budget__income--value',
         expLabel: '.budget__expenses--value',
@@ -112,10 +130,10 @@ var UIController = (function () {
             return DOMStrings;
         },
 
-        clearFields: function(){
+        clearFields: function () {
             var fields;
             fields = document.querySelectorAll(DOMStrings.inputDescription + ',' + DOMStrings.inputValue);
-            fields.forEach(function(current){
+            fields.forEach(function (current) {
                 current.value = '';
             })
 
@@ -132,9 +150,37 @@ var UIController = (function () {
             return item;
         },
 
-        addListItem: function(obj,type){
+        addListItem: function (item, type) {
             //TODO
-            console.log(obj);
+            var html, selector;
+            if (type === 'inc') {
+                html = `<div class="item clearfix" id="${type}-${item.id}">
+                <div class="item__description">${item.description}</div>
+                <div class="right clearfix"><div class="item__value">${item.value}</div>
+                <div class="item__delete"><button class="item__delete--btn">
+                <i class="ion-ios-close-outline"></i></button></div></div></div>`;
+
+                selector = DOMStrings['incList'];
+            } else if (type === 'exp') {
+                html = `<div class="item clearfix" id="${type}-${item.id}">
+                <div class="item__description">${item.description}</div>
+                <div class="right clearfix">
+                <div class="item__value">${item.value}</div>
+                <div class="item__percentage">${item.percentage}%</div>
+                <div class="item__delete">
+                <button class="item__delete--btn"><i class="ion-ios-close-outline"></i></button>
+                </div></div></div>`;
+
+                selector = DOMStrings['expList'];
+            }
+
+            document.querySelector(selector).insertAdjacentHTML('beforeend', html);
+        },
+
+        delListItem(type,id){
+            var el;
+            el = document.getElementById(type+'-'+id);
+            el.parentNode.removeChild(el);
         },
 
         displayBudget: function (obj) {
@@ -159,10 +205,10 @@ var UIController = (function () {
             document.querySelector(DOMStrings.dateLabel).textContent = months[month] + ' of ' + year;
         },
 
-        changeType: function(){
+        changeType: function () {
             var fields;
             fields = document.querySelectorAll(DOMStrings.inputType + ',' + DOMStrings.inputDescription + ',' + DOMStrings.inputValue);
-            fields.forEach(function(current){
+            fields.forEach(function (current) {
                 current.classList.toggle('red-focus');
             });
 
@@ -177,43 +223,74 @@ var controller = (function (bdgtCtrl, uiCtrl) {
 
     var DOM = uiCtrl.getDOMStrings();
     var now = new Date();
+    
+    // controll functions ----------------------------------------------------------------
 
     var ctrlAddItem = function () {
-
         //1. get input from ui 
         var input = uiCtrl.getItem(); //{type,description,value}
-        // console.log(input)
 
-        //2. save item into datastructure
-        var newItem = bdgtCtrl.createItem(input);
+        //validate input before adding it
+        if (input.description !== '' && input.value > 0 && input.value != '') {
+            //2. save item into datastructure
+            var newItem = bdgtCtrl.addItem(input);
+
+            // 4. display items list
+            uiCtrl.addListItem(newItem, input.type);
+
+            // 3. clear fields
+            uiCtrl.clearFields();
+
+            //4. calc budget & display it
+            updateBuget();
+        }
+
+    };
+
+    var ctrlDelItem = function(event){
+        var itemID, ID, type;
+
+        itemID = event.target.parentNode.parentNode.parentNode.parentNode.id; //inc-0 or exp-0
+        if(itemID){
+            // validate id first
+            // 1. extract type from string id
+            itemID = itemID.split('-');
+            type = itemID[0];
+            ID= parseInt(itemID[1]);
         
-        // 4. display items list
-        uiCtrl.addListItem(newItem, input.type);
+            // 2. delete item from budget controller
+            bdgtCtrl.delItem(type,ID);
 
-        // 3. clear fields
-        uiCtrl.clearFields();
+            // 3. calc budget and display it 
+            updateBuget();
+            
+            // 4. re calculate items Percentages
+            
+            // 4. delete item form ui list
+            uiCtrl.delListItem(type, ID);
+        }        
+    };
 
-        //4. calc budget
-        var budgetData = bdgtCtrl.updateBudget();
-        //bdgtCtrl.testing()
-
-        //4. update ui
-        uiCtrl.displayBudget(budgetData);
-
-    }
-
-    var setupEventListeners  = function () {
+    var setupEventListeners = function () {
 
         document.querySelector(DOM.inputBtn).addEventListener('click', ctrlAddItem);
         document.addEventListener('keypress', function (event) {
-            if( event.keyCode === 13 || event.which === 13){
+            if (event.keyCode === 13 || event.which === 13) {
                 ctrlAddItem();
             }
         });
 
-        document.querySelector(DOM.inputType).addEventListener('change',uiCtrl.changeType);
-        
+        document.querySelector(DOM.inputType).addEventListener('change', uiCtrl.changeType);
+        document.querySelector(DOM.container).addEventListener('click', ctrlDelItem);
     }
+
+    
+    // helper functions ----------------------------------------------------------------
+
+    var updateBuget = function(){
+        var budgetData = bdgtCtrl.updateBudget();
+        uiCtrl.displayBudget(budgetData);
+    };
 
     return {
         init: function () {
