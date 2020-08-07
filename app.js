@@ -30,6 +30,10 @@ var budgetController = (function () {
         percentage: -1
     }
 
+    Expense.prototype.getPercentage = function(){
+        return this.percentage;
+    }
+
     var addItemToData = function (type, item) {
         data.allItems[type].push(item);
         return item;
@@ -46,7 +50,23 @@ var budgetController = (function () {
             exp: data.totals.exp,
             percentage: data.percentage,
         }
-    }
+    };
+    
+    var calcPercentages = function(){
+        var percentages = [];
+
+        //calc percentage for each item
+        percentages = data.allItems.exp.map(function(cur){
+            if(data.totals.inc > 0){
+                cur.percentage = Math.round((cur.value / data.totals.inc)* 100);
+            }else{
+                cur.percentage = -1;
+            }
+            return cur.percentage;
+        });
+
+        return percentages;
+    };
 
     return {
         addItem: function (obj) {
@@ -89,8 +109,8 @@ var budgetController = (function () {
         updateBudget: function () {
             data.budget = data.totals.inc - data.totals.exp;
 
-            if (data.budget > 0) {
-                data.percentage = Math.round((data.totals.exp / data.budget) * 100);
+            if (data.totals.inc > 0) {
+                data.percentage = Math.round((data.totals.exp / data.totals.inc) * 100);
             }
 
             return getBudget();
@@ -99,6 +119,12 @@ var budgetController = (function () {
 
         testing: function () {
             console.log(data);
+        },
+
+        updatePercentages: function(){
+            // calc percentages 
+            return calcPercentages();        
+            // return items to pass it to ui
         }
     }
 
@@ -122,6 +148,7 @@ var UIController = (function () {
         expLabel: '.budget__expenses--value',
         percentageLabel: '.budget__expenses--percentage',
         dateLabel: '.budget__title--month',
+        itemPercetageLabel: '.item__percentage',
 
     }
 
@@ -205,6 +232,20 @@ var UIController = (function () {
             document.querySelector(DOMStrings.dateLabel).textContent = months[month] + ' of ' + year;
         },
 
+        displayPercentages: function(percentages){
+            var elements;
+            // @TODO format index
+
+            // nodelist
+            elements = document.querySelectorAll(DOMStrings.itemPercetageLabel);
+
+            elements.forEach(function(el , index ){
+                el.textContent = percentages[index];
+                console.log(el.textContent)
+            })
+        },
+
+        // change outline based on type
         changeType: function () {
             var fields;
             fields = document.querySelectorAll(DOMStrings.inputType + ',' + DOMStrings.inputDescription + ',' + DOMStrings.inputValue);
@@ -243,6 +284,10 @@ var controller = (function (bdgtCtrl, uiCtrl) {
 
             //4. calc budget & display it
             updateBuget();
+
+            // 5. re calculate items Percentages & display it
+            updatePercentages();
+
         }
 
     };
@@ -263,11 +308,12 @@ var controller = (function (bdgtCtrl, uiCtrl) {
 
             // 3. calc budget and display it 
             updateBuget();
-            
-            // 4. re calculate items Percentages
-            
+
             // 4. delete item form ui list
             uiCtrl.delListItem(type, ID);
+
+            // 5. re calculate items Percentages & display it
+            updatePercentages();
         }        
     };
 
@@ -292,6 +338,13 @@ var controller = (function (bdgtCtrl, uiCtrl) {
         uiCtrl.displayBudget(budgetData);
     };
 
+    var updatePercentages = function(){
+        // calc persentages & get arr pf percentages from budget controller
+        var persentages = bdgtCtrl.updatePercentages();
+        // display percentages
+        uiCtrl.displayPercentages(persentages);
+    };
+
     return {
         init: function () {
             console.log("Application Has Started")
@@ -306,6 +359,7 @@ var controller = (function (bdgtCtrl, uiCtrl) {
             setupEventListeners();
         }
     }
+
 
 })(budgetController, UIController);
 
